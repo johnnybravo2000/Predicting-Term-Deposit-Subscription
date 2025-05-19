@@ -1,0 +1,371 @@
+---
+title: "update_4_R_model"
+output:
+  html_document: default
+  pdf_document: default
+date: "2025-04-21"
+---
+
+# Import the libraries
+
+```{r}
+library(caret)
+library(dplyr)
+library(rpart)
+library(pROC)
+library(rpart.plot)
+```
+
+# Import the data
+
+```{r}
+file_path <- "/Users/naren/Library/CloudStorage/OneDrive-MercerUniversity/MERCER UNIVERSITY/SEM 4/Capstone_Group5/update_4.csv"
+df <- read.csv(file_path)
+```
+
+# Sample
+
+```{r}
+head(df,3)
+```
+
+# Structure
+
+```{r}
+str(df)
+```
+
+# Factor Categorical Variables
+
+```{r}
+df$y <- factor(df$y)
+df$housing <- factor(df$housing)
+df$loan <- factor(df$loan)
+df$default <- factor(df$default)
+```
+
+```{r}
+write.csv(df, "update_4.csv", row.names = FALSE)
+```
+
+
+
+
+
+```{r}
+library(caret)   # for data splitting
+```
+
+# train, test, split with stratification
+
+```{r}
+set.seed(123)  # for reproducibility
+
+# Create stratified train/test split
+train_index <- createDataPartition(df$y, p = 0.7, list = FALSE)
+
+train_data2 <- df[train_index, ]
+test_data2<- df[-train_index, ]
+```
+
+
+
+# Logistic Regression
+
+```{r}
+# Basic logistic regression using all other variables
+logit_model <- glm(y ~ ., data = train_data2, family = "binomial")
+```
+
+# Model Summary Logistic Regression
+
+```{r}
+summary(logit_model)
+```
+
+# Test the Model
+
+```{r}
+predicted.test.prob = predict(logit_model, newdata=test_data2, type = 
+"response")
+```
+
+# Check the sample of th actual vs predited
+
+```{r}
+data.frame(
+  actual = test_data2$y[1:5],
+  predicted = predicted.test.prob[1:5]
+)
+```
+
+# label the predicted probs to categorical using default cut off point as 0.2
+
+```{r}
+predicted.test.class = ifelse(predicted.test.prob > 0.2, "yes", "no")
+```
+
+# Model Peformance - Confusion Matrix
+
+```{r}
+confusionMatrix(as.factor(predicted.test.class), test_data2$y, positive = "yes")
+```
+
+```{r}
+prop.table(table(df$y))
+```
+
+
+# Logisitic Regression AUC and ROC curve
+
+```{r}
+# ROC and AUC
+logit_roc <- roc(test_data2$y, predicted.test.prob)
+plot(logit_roc, main = "ROC Curve - Logistic Regression")
+```
+
+```{r}
+auc(logit_roc)
+```
+
+
+# Random Forest
+
+
+```{r}
+library(randomForest)
+```
+
+# Train the Random Forest Model
+
+```{r}
+model.RF <- randomForest(y ~ ., data = train_data2, ntree = 100, mtry = 3, importance = TRUE)
+```
+
+# Test the Random Forest Model
+
+```{r}
+pred.RF <- predict(model.RF, newdata = test_data2, )
+```
+
+```{r}
+levels(test_data2$y)
+```
+
+
+# Confusion Matrix - Model Performance and Evaluation
+
+```{r}
+# Predict probabilities on test set
+pred.prob <- predict(model.RF, newdata = test_data2, type = "prob")[,"yes"]
+
+
+# Apply cutoff of 0.2
+pred.labels <- ifelse(pred.prob > 0.22, "yes", "no")
+
+#Convert predictions to factor with same levels as the actual data
+pred.labels <- factor(pred.labels, levels = c("no", "yes"))
+
+
+# Confusion matrix using the new predictions
+conf_matrix <- confusionMatrix(pred.labels, test_data2$y, positive = "yes")
+print(conf_matrix)
+```
+
+
+
+# Variable Importance - Random Forest
+
+```{r}
+importance(model.RF)
+```
+
+
+```{r}
+varImpPlot(model.RF)
+```
+
+
+```{r}
+predicted_prob1 = predict(model.RF, newdata = test_data2, type = "prob")
+predict_class2 = as.factor(ifelse(predicted_prob1[,2] >=0.22, "1", "0"))
+library(pROC)
+roc_curve2 = roc(response = test_data2$y, predictor = predicted_prob1[,2])
+plot(roc_curve2, print.thres = c(0.22))
+```
+
+
+
+```{r}
+# Print AUC
+auc(roc_curve2)
+```
+
+
+# Decision Tree
+
+```{r}
+library(caret)
+library(rpart)
+```
+
+# Train the model - decision tree
+
+```{r}
+set.seed(123)
+
+tree_model <- rpart(y ~ ., data = train_data2, method = "class")  # Use method = "anova" for regression
+```
+
+
+
+```{r}
+print(tree_model)
+```
+
+
+# Plot Decision Tree
+
+```{r}
+rpart.plot(tree_model, type = 2, extra = 104, fallen.leaves = TRUE)
+```
+
+
+# test and evaluate the model
+
+```{r}
+# Predict class probabilities instead of hard classes
+pred.prob <- predict(tree_model, test_data2, type = "prob")[, "yes"]
+
+# Apply cutoff of 0.2 to classify as "yes" or "no"
+pred.labels <- ifelse(pred.prob > 0.2, "yes", "no")
+pred.labels <- factor(pred.labels, levels = c("no", "yes"))
+
+# Confusion matrix using custom cutoff
+conf_matrix <- confusionMatrix(pred.labels, test_data2$y, positive = "yes")
+print(conf_matrix)
+```
+
+
+
+
+```{r}
+# ROC and AUC
+roc_obj <- roc(test_data2$y, pred.prob, levels = c("no", "yes"), direction = "<")
+
+# Plot ROC curve
+plot(roc_obj, main = "ROC Curve", col = "blue", lwd = 2)
+abline(a = 0, b = 1, lty = 2, col = "gray")  # Diagonal reference line
+```
+
+```{r}
+auc_value <- auc(roc_obj)
+cat("AUC for Decision Tree:", auc_value, "\n")
+```
+
+
+# Neural Network
+
+```{r}
+library(nnet)
+```
+
+# train the Neural Network
+
+```{r}
+
+# Train the model
+nn_model <- nnet(y ~ ., 
+                 data = train_data2, 
+                 size = 5,         # Number of neurons in hidden layer
+                 maxit = 500,      # Max iterations
+                 decay = 5e-4,     # Weight decay (regularization)
+                 trace = TRUE)
+```
+
+# Evaluate the Neural Network Model
+
+```{r}
+# For binary classification:
+nn_preds <- predict(nn_model, newdata = test_data2, type = "class")  # returns factor
+```
+
+```{r}
+nn_preds <- factor(nn_preds)
+confusionMatrix(nn_preds, test_data2$y, positive = "yes")
+```
+
+
+```{r}
+library(NeuralNetTools)
+plotnet(nn_model)
+```
+
+
+```{r}
+# Predict probabilities instead of classes
+nn_probs <- predict(nn_model, newdata = test_data2, type = "raw") 
+
+# Convert to "yes"/"no" labels based on 0.2 cutoff
+nn_pred_labels <- ifelse(nn_probs > 0.25, "yes", "no")
+nn_pred_labels <- factor(nn_pred_labels, levels = c("no", "yes"))
+
+# Ensure actual labels are correctly formatted
+test_data2$y <- factor(test_data2$y, levels = c("no", "yes"))
+
+# Confusion matrix
+library(caret)
+conf_matrix <- confusionMatrix(nn_pred_labels, test_data2$y, positive = "yes")
+print(conf_matrix)
+```
+
+```{r}
+# Create ROC object
+roc_nn <- roc(test_data2$y, as.numeric(nn_probs), levels = c("no", "yes"), direction = "<")
+
+# Plot ROC curve
+plot(roc_nn, col = "darkgreen", lwd = 2, main = "ROC Curve (Neural Net)")
+abline(a = 0, b = 1, lty = 2, col = "gray")
+```
+
+
+```{r}
+# AUC value
+auc_nn <- auc(roc_nn)
+cat("AUC NN:", auc_nn, "\n")
+```
+
+```{r}
+library(pROC)
+
+# Plot the first ROC curve
+plot(logit_roc, col = "blue", lwd = 2, main = "ROC Curve Comparison")
+
+# Add others
+lines(roc_curve2, col = "green", lwd = 2)
+lines(roc_obj, col = "red", lwd = 2)
+lines(roc_nn, col = "purple", lwd = 2)
+
+# Add a diagonal reference line
+abline(a = 0, b = 1, lty = 2, col = "gray")
+
+# Add legend with AUC values
+legend("bottomright",
+       legend = c(
+         paste0("Logistic (AUC = ", round(auc(logit_roc), 2), ")"),
+         paste0("Random Forest (AUC = ", round(auc(roc_curve2), 2), ")"),
+         paste0("Decision Tree (AUC = ", round(auc(roc_obj), 2), ")"),
+         paste0("Neural Net (AUC = ", round(auc(roc_nn), 2), ")")
+       ),
+       col = c("blue", "green", "red", "purple"),
+       lwd = 2)
+```
+
+```{r}
+prop.table(table(test_data2$y))
+```
+
+```{r}
+
+```
+
